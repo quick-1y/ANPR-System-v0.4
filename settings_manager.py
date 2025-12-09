@@ -90,14 +90,14 @@ class SettingsManager:
     @staticmethod
     def _channel_defaults(tracking_defaults: Dict[str, Any]) -> Dict[str, Any]:
         return {
-            "best_shots": int(tracking_defaults.get("best_shots", 3)),
-            "cooldown_seconds": int(tracking_defaults.get("cooldown_seconds", 5)),
-            "ocr_min_confidence": float(tracking_defaults.get("ocr_min_confidence", 0.6)),
+            "best_shots": int(tracking_defaults.get("best_shots", 10)),
+            "cooldown_seconds": int(tracking_defaults.get("cooldown_seconds", 10)),
+            "ocr_min_confidence": float(tracking_defaults.get("ocr_min_confidence", 0.9)),
             "region": {"x": 0, "y": 0, "width": 100, "height": 100},
-            "detection_mode": "continuous",
-            "detector_frame_stride": 2,
+            "detection_mode": "motion",
+            "detector_frame_stride": 5,
             "motion_threshold": 0.01,
-            "motion_frame_stride": 1,
+            "motion_frame_stride": 2,
             "motion_activation_frames": 3,
             "motion_release_frames": 6,
         }
