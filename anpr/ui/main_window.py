@@ -236,10 +236,14 @@ class EventDetailView(QtWidgets.QWidget):
         self.channel_label = QtWidgets.QLabel("—")
         self.plate_label = QtWidgets.QLabel("—")
         self.conf_label = QtWidgets.QLabel("—")
+        self.country_label = QtWidgets.QLabel("—")
+        self.format_label = QtWidgets.QLabel("—")
         meta_layout.addRow("Дата:", self.time_label)
         meta_layout.addRow("Канал:", self.channel_label)
         meta_layout.addRow("Гос. номер:", self.plate_label)
         meta_layout.addRow("Уверенность:", self.conf_label)
+        meta_layout.addRow("Страна:", self.country_label)
+        meta_layout.addRow("Формат:", self.format_label)
         bottom_row.addWidget(meta_group, 1)
 
         layout.addLayout(bottom_row, stretch=1)
@@ -270,6 +274,8 @@ class EventDetailView(QtWidgets.QWidget):
         self.channel_label.setText("—")
         self.plate_label.setText("—")
         self.conf_label.setText("—")
+        self.country_label.setText("—")
+        self.format_label.setText("—")
         for group in (self.frame_preview, self.plate_preview):
             group.display_label.setPixmap(QtGui.QPixmap())  # type: ignore[attr-defined]
             group.display_label.setText("Нет изображения")  # type: ignore[attr-defined]
@@ -290,6 +296,8 @@ class EventDetailView(QtWidgets.QWidget):
         self.plate_label.setText(plate)
         conf = event.get("confidence")
         self.conf_label.setText(f"{float(conf):.2f}" if conf is not None else "—")
+        self.country_label.setText(event.get("country_name") or event.get("country") or "—")
+        self.format_label.setText(event.get("plate_format") or "—")
 
         self._set_image(self.frame_preview, frame_image, keep_aspect=True)
         self._set_image(self.plate_preview, plate_image, keep_aspect=True)
@@ -428,8 +436,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "QGroupBox { background-color: rgb(40,40,40); color: white; border: 1px solid #2e2e2e; padding: 6px; }"
         )
         events_layout = QtWidgets.QVBoxLayout(events_group)
-        self.events_table = QtWidgets.QTableWidget(0, 3)
-        self.events_table.setHorizontalHeaderLabels(["Время", "Гос. номер", "Канал"])
+        self.events_table = QtWidgets.QTableWidget(0, 4)
+        self.events_table.setHorizontalHeaderLabels(["Время", "Гос. номер", "Страна", "Канал"])
         self.events_table.setStyleSheet(self.TABLE_STYLE)
         self.events_table.horizontalHeader().setStretchLastSection(True)
         self.events_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -488,6 +496,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._stop_workers()
         self.channel_workers = []
         reconnect_conf = self.settings.get_reconnect()
+        validation_conf = self.settings.get_validation()
         for channel_conf in self.settings.get_channels():
             source = str(channel_conf.get("source", "")).strip()
             channel_name = channel_conf.get("name", "Канал")
@@ -501,6 +510,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.settings.get_db_path(),
                 self.settings.get_screenshot_dir(),
                 reconnect_conf,
+                validation_conf,
             )
             worker.frame_ready.connect(self._update_frame)
             worker.event_ready.connect(self._handle_event)
@@ -590,7 +600,17 @@ class MainWindow(QtWidgets.QMainWindow):
             id_item.setData(QtCore.Qt.UserRole, int(row_data["id"]))
             self.events_table.setItem(row_index, 0, id_item)
             self.events_table.setItem(row_index, 1, QtWidgets.QTableWidgetItem(row_data["plate"]))
-            self.events_table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(row_data["channel"]))
+            self.events_table.setItem(
+                row_index,
+                2,
+                QtWidgets.QTableWidgetItem(
+                    row_data.get("country_name")
+                    or row_data.get("country")
+                    or row_data.get("plate_format")
+                    or ""
+                ),
+            )
+            self.events_table.setItem(row_index, 3, QtWidgets.QTableWidgetItem(row_data["channel"]))
 
         if select_id:
             for row in range(self.events_table.rowCount()):
