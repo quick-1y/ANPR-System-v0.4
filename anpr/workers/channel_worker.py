@@ -13,6 +13,7 @@ from PyQt5 import QtCore, QtGui
 
 from anpr.detection.motion_detector import MotionDetector, MotionDetectorConfig
 from anpr.pipeline.factory import build_components
+from anpr.ui.image_pool import ImagePool
 from logging_manager import get_logger
 from storage import AsyncEventDatabase
 
@@ -141,6 +142,9 @@ class ChannelWorker(QtCore.QThread):
         self.screenshot_dir = screenshot_dir
         os.makedirs(self.screenshot_dir, exist_ok=True)
         self._running = True
+        self._last_bgr_frame: Optional[cv2.Mat] = None
+        self._last_rgb_frame: Optional[cv2.Mat] = None
+        self._image_pool = ImagePool()
 
         motion_config = MotionDetectorConfig(
             threshold=self.config.motion_threshold,
@@ -205,16 +209,24 @@ class ChannelWorker(QtCore.QThread):
             adjusted.append(det_copy)
         return adjusted
 
-    @staticmethod
-    def _to_qimage(frame: cv2.Mat) -> Optional[QtGui.QImage]:
+    def _get_rgb_frame(self, frame: Optional[cv2.Mat]) -> Optional[cv2.Mat]:
         if frame is None or frame.size == 0:
             return None
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        height, width, channels = rgb_frame.shape
-        bytes_per_line = channels * width
-        return QtGui.QImage(
-            rgb_frame.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888
-        ).copy()
+        if self._last_bgr_frame is frame:
+            return self._last_rgb_frame
+        self._last_bgr_frame = frame
+        self._last_rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return self._last_rgb_frame
+
+    def _borrow_qimage(self, rgb_frame: Optional[cv2.Mat]) -> Optional[QtGui.QImage]:
+        if rgb_frame is None:
+            return None
+        return self._image_pool.get_qimage(rgb_frame)
+
+    def _to_qimage(self, rgb_frame: Optional[cv2.Mat]) -> Optional[QtGui.QImage]:
+        if rgb_frame is None:
+            return None
+        return self._image_pool.get_qimage(rgb_frame).copy()
 
     @staticmethod
     def _sanitize_for_filename(value: str) -> str:
@@ -252,6 +264,7 @@ class ChannelWorker(QtCore.QThread):
         channel_name: str,
         frame: cv2.Mat,
     ) -> None:
+        rgb_frame = self._get_rgb_frame(frame)
         for res in results:
             if res.get("unreadable"):
                 logger.debug(
@@ -273,8 +286,12 @@ class ChannelWorker(QtCore.QThread):
                 frame_path, plate_path = self._build_screenshot_paths(channel_name, event["plate"])
                 event["frame_path"] = self._save_bgr_image(frame_path, frame)
                 event["plate_path"] = self._save_bgr_image(plate_path, plate_crop)
-                event["frame_image"] = self._to_qimage(frame)
-                event["plate_image"] = self._to_qimage(plate_crop) if plate_crop is not None else None
+                event["frame_image"] = self._to_qimage(rgb_frame)
+                if plate_crop is not None and plate_crop.size > 0:
+                    plate_rgb = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2RGB)
+                    event["plate_image"] = self._to_qimage(plate_rgb)
+                else:
+                    event["plate_image"] = None
                 event["id"] = await storage.insert_event_async(
                     channel=event["channel"],
                     plate=event["plate"],
@@ -365,15 +382,10 @@ class ChannelWorker(QtCore.QThread):
                     results = await asyncio.to_thread(pipeline.process_frame, frame, detections)
                     await self._process_events(storage, source, results, channel_name, frame)
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            height, width, channel = rgb_frame.shape
-            bytes_per_line = 3 * width
-            # Копируем буфер, чтобы предотвратить обращение Qt к уже освобожденной памяти
-            # во время перерисовок окна.
-            q_image = QtGui.QImage(
-                rgb_frame.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888
-            ).copy()
-            self.frame_ready.emit(channel_name, q_image)
+            rgb_frame = self._get_rgb_frame(frame)
+            q_image = self._borrow_qimage(rgb_frame)
+            if q_image is not None:
+                self.frame_ready.emit(channel_name, q_image)
 
         capture.release()
 

@@ -44,6 +44,7 @@ class CRNNRecognizer:
 
         model_quantized.load_state_dict(torch.load(model_path, map_location=device))
         self.model = model_quantized
+        self._batch_size = 8
         logger.info("Распознаватель OCR (INT8) успешно загружен (model=%s, device=%s)", model_path, device)
 
     @torch.no_grad()
@@ -51,6 +52,23 @@ class CRNNRecognizer:
         preprocessed_plate = self.transform(plate_image).unsqueeze(0).to(self.device)
         preds = self.model(preprocessed_plate)
         return self._decode_with_confidence(preds)
+
+    @torch.no_grad()
+    def recognize_batch(self, plate_images: List) -> List[Tuple[str, float]]:
+        if not plate_images:
+            return []
+        if len(plate_images) == 1:
+            return [self.recognize(plate_images[0])]
+
+        batch_tensors = []
+        for img in plate_images:
+            tensor = self.transform(img).unsqueeze(0)
+            batch_tensors.append(tensor)
+
+        batch = torch.cat(batch_tensors, dim=0).to(self.device)
+        preds = self.model(batch)
+
+        return [self._decode_with_confidence(preds[i : i + 1]) for i in range(len(plate_images))]
 
     def _decode_with_confidence(self, log_probs: torch.Tensor) -> Tuple[str, float]:
         probs = log_probs.permute(1, 0, 2)[0]
