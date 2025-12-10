@@ -109,34 +109,38 @@ class ANPRPipeline:
         return plate_image
 
     def process_frame(self, frame: np.ndarray, detections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        for detection in detections:
+        processed_batches: list[np.ndarray] = []
+        processed_indices: list[int] = []
+        for idx, detection in enumerate(detections):
             x1, y1, x2, y2 = detection["bbox"]
             roi = frame[y1:y2, x1:x2]
 
             if roi.size > 0:
                 processed_plate = self._preprocess_plate(roi)
-
                 if processed_plate.size > 0:
-                    current_text, confidence = self.recognizer.recognize(processed_plate)
+                    processed_indices.append(idx)
+                    processed_batches.append(processed_plate)
 
-                    if confidence < self.min_confidence:
-                        detection["text"] = "Нечитаемо"
-                        detection["unreadable"] = True
-                        detection["confidence"] = confidence
-                        continue
+        batch_results = self.recognizer.recognize_batch(processed_batches)
+        for detection_idx, (current_text, confidence) in zip(processed_indices, batch_results):
+            detection = detections[detection_idx]
+            detection["confidence"] = confidence
 
-                    if "track_id" in detection:
-                        detection["text"] = self.aggregator.add_result(detection["track_id"], current_text)
-                    else:
-                        detection["text"] = current_text
+            if confidence < self.min_confidence:
+                detection["text"] = "Нечитаемо"
+                detection["unreadable"] = True
+                continue
 
-                    detection["confidence"] = confidence
+            if "track_id" in detection:
+                detection["text"] = self.aggregator.add_result(detection["track_id"], current_text)
+            else:
+                detection["text"] = current_text
 
-                    if self.cooldown_seconds > 0 and detection.get("text"):
-                        if self._on_cooldown(detection["text"]):
-                            detection["text"] = ""
-                        else:
-                            self._touch_plate(detection["text"])
+            if self.cooldown_seconds > 0 and detection.get("text"):
+                if self._on_cooldown(detection["text"]):
+                    detection["text"] = ""
+                else:
+                    self._touch_plate(detection["text"])
         return detections
 
 
