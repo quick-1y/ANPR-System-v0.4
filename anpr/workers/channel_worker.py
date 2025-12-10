@@ -132,6 +132,7 @@ class ChannelWorker(QtCore.QThread):
         db_path: str,
         screenshot_dir: str,
         reconnect_conf: Optional[Dict[str, Any]] = None,
+        validation_conf: Optional[Dict[str, Any]] = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -139,6 +140,7 @@ class ChannelWorker(QtCore.QThread):
         self.reconnect_policy = ReconnectPolicy.from_dict(reconnect_conf)
         self.db_path = db_path
         self.screenshot_dir = screenshot_dir
+        self.validation_conf = validation_conf or {}
         os.makedirs(self.screenshot_dir, exist_ok=True)
         self._running = True
 
@@ -179,7 +181,10 @@ class ChannelWorker(QtCore.QThread):
 
     def _build_pipeline(self) -> Tuple[object, object]:
         return build_components(
-            self.config.best_shots, self.config.cooldown_seconds, self.config.min_confidence
+            self.config.best_shots,
+            self.config.cooldown_seconds,
+            self.config.min_confidence,
+            validation_conf=self.validation_conf,
         )
 
     def _extract_region(self, frame: cv2.Mat) -> Tuple[cv2.Mat, Tuple[int, int, int, int]]:
@@ -260,6 +265,13 @@ class ChannelWorker(QtCore.QThread):
                     res.get("confidence", 0.0),
                 )
                 continue
+            if res.get("invalid"):
+                logger.debug(
+                    "Канал %s: номер отклонен валидатором (%s)",
+                    channel_name,
+                    res.get("validation_reason", "no_match"),
+                )
+                continue
             if res.get("text"):
                 event = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -267,6 +279,11 @@ class ChannelWorker(QtCore.QThread):
                     "plate": res.get("text", ""),
                     "confidence": res.get("confidence", 0.0),
                     "source": source,
+                    "raw_text": res.get("raw_text"),
+                    "country_code": res.get("country_code"),
+                    "country_name": res.get("country_name"),
+                    "plate_format": res.get("plate_format"),
+                    "validation_reason": res.get("validation_reason"),
                 }
                 x1, y1, x2, y2 = res.get("bbox", (0, 0, 0, 0))
                 plate_crop = frame[y1:y2, x1:x2] if frame is not None else None
@@ -283,6 +300,11 @@ class ChannelWorker(QtCore.QThread):
                     timestamp=event["timestamp"],
                     frame_path=event.get("frame_path"),
                     plate_path=event.get("plate_path"),
+                    raw_text=event.get("raw_text"),
+                    country_code=event.get("country_code"),
+                    country_name=event.get("country_name"),
+                    plate_format=event.get("plate_format"),
+                    validation_reason=event.get("validation_reason"),
                 )
                 self.event_ready.emit(event)
                 logger.info(

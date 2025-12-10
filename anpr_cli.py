@@ -17,6 +17,7 @@ from anpr.config import ModelConfig
 from anpr.detection.yolo_detector import YOLODetector
 from anpr.pipeline.anpr_pipeline import ANPRPipeline, Visualizer
 from anpr.recognition.crnn_recognizer import CRNNRecognizer
+from anpr.validation import PlateValidator
 from logging_manager import LoggingManager, get_logger
 
 logger = get_logger(__name__)
@@ -84,7 +85,8 @@ def main() -> None:
         LoggingManager()
         detector = YOLODetector(ModelConfig.YOLO_MODEL_PATH, ModelConfig.DEVICE)
         recognizer = CRNNRecognizer(ModelConfig.OCR_MODEL_PATH, ModelConfig.DEVICE)
-        pipeline = ANPRPipeline(recognizer, ModelConfig.TRACK_BEST_SHOTS)
+        validator = PlateValidator()
+        pipeline = ANPRPipeline(recognizer, ModelConfig.TRACK_BEST_SHOTS, validator=validator)
         process_source(pipeline, detector, args.source)
     except (IOError, FileNotFoundError) as exc:
         logger.error("Критическая ошибка: %s", exc)

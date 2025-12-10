@@ -236,10 +236,16 @@ class EventDetailView(QtWidgets.QWidget):
         self.channel_label = QtWidgets.QLabel("—")
         self.plate_label = QtWidgets.QLabel("—")
         self.conf_label = QtWidgets.QLabel("—")
+        self.country_label = QtWidgets.QLabel("—")
+        self.format_label = QtWidgets.QLabel("—")
+        self.raw_label = QtWidgets.QLabel("—")
         meta_layout.addRow("Дата:", self.time_label)
         meta_layout.addRow("Канал:", self.channel_label)
         meta_layout.addRow("Гос. номер:", self.plate_label)
         meta_layout.addRow("Уверенность:", self.conf_label)
+        meta_layout.addRow("Страна:", self.country_label)
+        meta_layout.addRow("Формат:", self.format_label)
+        meta_layout.addRow("OCR сырой:", self.raw_label)
         bottom_row.addWidget(meta_group, 1)
 
         layout.addLayout(bottom_row, stretch=1)
@@ -270,6 +276,9 @@ class EventDetailView(QtWidgets.QWidget):
         self.channel_label.setText("—")
         self.plate_label.setText("—")
         self.conf_label.setText("—")
+        self.country_label.setText("—")
+        self.format_label.setText("—")
+        self.raw_label.setText("—")
         for group in (self.frame_preview, self.plate_preview):
             group.display_label.setPixmap(QtGui.QPixmap())  # type: ignore[attr-defined]
             group.display_label.setText("Нет изображения")  # type: ignore[attr-defined]
@@ -290,6 +299,16 @@ class EventDetailView(QtWidgets.QWidget):
         self.plate_label.setText(plate)
         conf = event.get("confidence")
         self.conf_label.setText(f"{float(conf):.2f}" if conf is not None else "—")
+        country_code = event.get("country_code")
+        country_name = event.get("country_name")
+        if country_code and country_name:
+            self.country_label.setText(f"{country_name} ({country_code})")
+        elif country_code:
+            self.country_label.setText(country_code)
+        else:
+            self.country_label.setText("—")
+        self.format_label.setText(event.get("plate_format") or "—")
+        self.raw_label.setText(event.get("raw_text") or "—")
 
         self._set_image(self.frame_preview, frame_image, keep_aspect=True)
         self._set_image(self.plate_preview, plate_image, keep_aspect=True)
@@ -488,6 +507,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._stop_workers()
         self.channel_workers = []
         reconnect_conf = self.settings.get_reconnect()
+        validation_conf = self.settings.get_validation()
         for channel_conf in self.settings.get_channels():
             source = str(channel_conf.get("source", "")).strip()
             channel_name = channel_conf.get("name", "Канал")
@@ -501,6 +521,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.settings.get_db_path(),
                 self.settings.get_screenshot_dir(),
                 reconnect_conf,
+                validation_conf,
             )
             worker.frame_ready.connect(self._update_frame)
             worker.event_ready.connect(self._handle_event)
@@ -726,6 +747,18 @@ class MainWindow(QtWidgets.QMainWindow):
         screenshot_container.setLayout(screenshot_row)
         general_form.addRow("Папка для скриншотов:", screenshot_container)
 
+        validation_group = QtWidgets.QGroupBox("Валидация номеров")
+        validation_layout = QtWidgets.QFormLayout(validation_group)
+        self.validation_enabled_checkbox = QtWidgets.QCheckBox("Включить валидатор")
+        validation_layout.addRow(self.validation_enabled_checkbox)
+        self.validation_countries_input = QtWidgets.QLineEdit()
+        self.validation_countries_input.setPlaceholderText("Например: RU,KZ")
+        validation_layout.addRow("Страны (коды):", self.validation_countries_input)
+        self.validation_stop_words_input = QtWidgets.QLineEdit()
+        self.validation_stop_words_input.setPlaceholderText("TEST,SAMPLE")
+        validation_layout.addRow("Стоп-слова:", self.validation_stop_words_input)
+        general_form.addRow(validation_group)
+
         save_general_btn = QtWidgets.QPushButton("Сохранить общие настройки")
         save_general_btn.clicked.connect(self._save_general_settings)
         general_form.addRow(save_general_btn)
@@ -891,6 +924,14 @@ class MainWindow(QtWidgets.QMainWindow):
         periodic = reconnect.get("periodic", {})
         self.db_dir_input.setText(self.settings.get_db_dir())
         self.screenshot_dir_input.setText(self.settings.get_screenshot_dir())
+        validation = self.settings.get_validation()
+        self.validation_enabled_checkbox.setChecked(bool(validation.get("enabled", True)))
+        self.validation_countries_input.setText(
+            ",".join(validation.get("countries", []))
+        )
+        self.validation_stop_words_input.setText(
+            ",".join(validation.get("stop_words", []))
+        )
 
         self.reconnect_on_loss_checkbox.setChecked(bool(signal_loss.get("enabled", True)))
         self.frame_timeout_input.setValue(int(signal_loss.get("frame_timeout_seconds", 5)))
@@ -928,6 +969,12 @@ class MainWindow(QtWidgets.QMainWindow):
         screenshot_dir = self.screenshot_dir_input.text().strip() or "data/screenshots"
         self.settings.save_screenshot_dir(screenshot_dir)
         os.makedirs(screenshot_dir, exist_ok=True)
+        validation_conf = {
+            "enabled": self.validation_enabled_checkbox.isChecked(),
+            "countries": [c.strip().upper() for c in self.validation_countries_input.text().split(",") if c.strip()],
+            "stop_words": [w.strip().upper() for w in self.validation_stop_words_input.text().split(",") if w.strip()],
+        }
+        self.settings.save_validation(validation_conf)
         self.db = EventDatabase(self.settings.get_db_path())
         self._refresh_events_table()
         self._start_channels()
