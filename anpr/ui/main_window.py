@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # /anpr/ui/main_window.py
 import os
+from datetime import datetime
 
 import cv2
 import psutil
@@ -236,7 +237,7 @@ class EventDetailView(QtWidgets.QWidget):
         self.channel_label = QtWidgets.QLabel("—")
         self.plate_label = QtWidgets.QLabel("—")
         self.conf_label = QtWidgets.QLabel("—")
-        meta_layout.addRow("Дата:", self.time_label)
+        meta_layout.addRow("Дата/Время:", self.time_label)
         meta_layout.addRow("Канал:", self.channel_label)
         meta_layout.addRow("Гос. номер:", self.plate_label)
         meta_layout.addRow("Уверенность:", self.conf_label)
@@ -429,7 +430,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         events_layout = QtWidgets.QVBoxLayout(events_group)
         self.events_table = QtWidgets.QTableWidget(0, 3)
-        self.events_table.setHorizontalHeaderLabels(["Время", "Гос. номер", "Канал"])
+        self.events_table.setHorizontalHeaderLabels(["Дата/Время", "Гос. номер", "Канал"])
         self.events_table.setStyleSheet(self.TABLE_STYLE)
         self.events_table.horizontalHeader().setStretchLastSection(True)
         self.events_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -448,7 +449,7 @@ class MainWindow(QtWidgets.QMainWindow):
     @staticmethod
     def _prepare_optional_datetime(widget: QtWidgets.QDateTimeEdit) -> None:
         widget.setCalendarPopup(True)
-        widget.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        widget.setDisplayFormat("dd.MM.yyyy HH:mm:ss")
         min_dt = QtCore.QDateTime.fromSecsSinceEpoch(0)
         widget.setMinimumDateTime(min_dt)
         widget.setSpecialValueText("Не выбрано")
@@ -460,6 +461,17 @@ class MainWindow(QtWidgets.QMainWindow):
             return None
         return widget.dateTime().toString(QtCore.Qt.ISODate)
 
+    @staticmethod
+    def _format_timestamp(value: str) -> str:
+        if not value:
+            return "—"
+        cleaned = value.replace("Z", "+00:00") if value.endswith("Z") else value
+        try:
+            parsed = datetime.fromisoformat(cleaned)
+            return parsed.strftime("%d.%m.%Y %H:%M:%S")
+        except ValueError:
+            return value
+
     def _draw_grid(self) -> None:
         for i in reversed(range(self.grid_layout.count())):
             item = self.grid_layout.takeAt(i)
@@ -470,6 +482,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.channel_labels.clear()
         channels = self.settings.get_channels()
         rows, cols = map(int, self.grid_selector.currentText().split("x"))
+        for col in range(cols):
+            self.grid_layout.setColumnStretch(col, 1)
+        for row in range(rows):
+            self.grid_layout.setRowStretch(row, 1)
         index = 0
         for row in range(rows):
             for col in range(cols):
@@ -562,7 +578,7 @@ class MainWindow(QtWidgets.QMainWindow):
         row_index = position if position is not None else self.events_table.rowCount()
         self.events_table.insertRow(row_index)
 
-        timestamp = event.get("timestamp", "—")
+        timestamp = self._format_timestamp(event.get("timestamp", ""))
         plate = event.get("plate", "—")
         channel = event.get("channel", "—")
         event_id = int(event.get("id") or 0)
@@ -612,7 +628,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if plate_image is None and event.get("plate_path"):
                 plate_image = self._load_image_from_path(event.get("plate_path"))
             self.event_images[event_id] = (frame_image, plate_image)
-        self.event_detail.set_event(event, frame_image, plate_image)
+        display_event = dict(event) if event else None
+        if display_event:
+            display_event["timestamp"] = self._format_timestamp(display_event.get("timestamp", ""))
+        self.event_detail.set_event(display_event, frame_image, plate_image)
 
     def _refresh_events_table(self, select_id: Optional[int] = None) -> None:
         rows = self.db.fetch_recent(limit=200)
@@ -668,7 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.search_table = QtWidgets.QTableWidget(0, 5)
         self.search_table.setHorizontalHeaderLabels(
-            ["Время", "Канал", "Номер", "Уверенность", "Источник"]
+            ["Дата/Время", "Канал", "Номер", "Уверенность", "Источник"]
         )
         self.search_table.horizontalHeader().setStretchLastSection(True)
         self.search_table.setStyleSheet(self.TABLE_STYLE)
@@ -689,7 +708,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for row_data in rows:
             row_index = self.search_table.rowCount()
             self.search_table.insertRow(row_index)
-            self.search_table.setItem(row_index, 0, QtWidgets.QTableWidgetItem(row_data["timestamp"]))
+            formatted_time = self._format_timestamp(row_data["timestamp"])
+            self.search_table.setItem(row_index, 0, QtWidgets.QTableWidgetItem(formatted_time))
             self.search_table.setItem(row_index, 1, QtWidgets.QTableWidgetItem(row_data["channel"]))
             self.search_table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(row_data["plate"]))
             self.search_table.setItem(
@@ -700,11 +720,23 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------ Настройки ------------------
     def _build_settings_tab(self) -> QtWidgets.QWidget:
         widget = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(widget)
-        tabs = QtWidgets.QTabWidget()
-        tabs.addTab(self._build_general_settings_tab(), "Общие")
-        tabs.addTab(self._build_channel_settings_tab(), "Каналы")
-        layout.addWidget(tabs)
+        layout = QtWidgets.QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.settings_nav = QtWidgets.QListWidget()
+        self.settings_nav.setFixedWidth(180)
+        self.settings_nav.setStyleSheet(self.LIST_STYLE)
+        self.settings_nav.addItem("Общие")
+        self.settings_nav.addItem("Каналы")
+        layout.addWidget(self.settings_nav)
+
+        self.settings_stack = QtWidgets.QStackedWidget()
+        self.settings_stack.addWidget(self._build_general_settings_tab())
+        self.settings_stack.addWidget(self._build_channel_settings_tab())
+        layout.addWidget(self.settings_stack, 1)
+
+        self.settings_nav.currentRowChanged.connect(self.settings_stack.setCurrentIndex)
+        self.settings_nav.setCurrentRow(0)
         return widget
 
     def _build_general_settings_tab(self) -> QtWidgets.QWidget:
@@ -712,32 +744,36 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QVBoxLayout(widget)
         widget.setStyleSheet(self.GROUP_BOX_STYLE)
 
-        general_group = QtWidgets.QGroupBox("Автоматическое переподключение")
-        general_group.setStyleSheet(self.GROUP_BOX_STYLE)
-        general_form = QtWidgets.QFormLayout(general_group)
+        reconnect_group = QtWidgets.QGroupBox("Автоматическое переподключение")
+        reconnect_group.setStyleSheet(self.GROUP_BOX_STYLE)
+        reconnect_form = QtWidgets.QFormLayout(reconnect_group)
         self.reconnect_on_loss_checkbox = QtWidgets.QCheckBox("Переподключение при потере сигнала")
-        general_form.addRow(self.reconnect_on_loss_checkbox)
+        reconnect_form.addRow(self.reconnect_on_loss_checkbox)
 
         self.frame_timeout_input = QtWidgets.QSpinBox()
         self.frame_timeout_input.setRange(1, 300)
         self.frame_timeout_input.setSuffix(" с")
         self.frame_timeout_input.setToolTip("Сколько секунд ждать кадр перед попыткой переподключения")
-        general_form.addRow("Таймаут ожидания кадра:", self.frame_timeout_input)
+        reconnect_form.addRow("Таймаут ожидания кадра:", self.frame_timeout_input)
 
         self.retry_interval_input = QtWidgets.QSpinBox()
         self.retry_interval_input.setRange(1, 300)
         self.retry_interval_input.setSuffix(" с")
         self.retry_interval_input.setToolTip("Интервал между попытками переподключения при потере сигнала")
-        general_form.addRow("Интервал между попытками:", self.retry_interval_input)
+        reconnect_form.addRow("Интервал между попытками:", self.retry_interval_input)
 
         self.periodic_reconnect_checkbox = QtWidgets.QCheckBox("Переподключение по таймеру")
-        general_form.addRow(self.periodic_reconnect_checkbox)
+        reconnect_form.addRow(self.periodic_reconnect_checkbox)
 
         self.periodic_interval_input = QtWidgets.QSpinBox()
         self.periodic_interval_input.setRange(1, 1440)
         self.periodic_interval_input.setSuffix(" мин")
         self.periodic_interval_input.setToolTip("Плановое переподключение каждые N минут")
-        general_form.addRow("Интервал переподключения:", self.periodic_interval_input)
+        reconnect_form.addRow("Интервал переподключения:", self.periodic_interval_input)
+
+        storage_group = QtWidgets.QGroupBox("Хранилище")
+        storage_group.setStyleSheet(self.GROUP_BOX_STYLE)
+        storage_form = QtWidgets.QFormLayout(storage_group)
 
         db_row = QtWidgets.QHBoxLayout()
         self.db_dir_input = QtWidgets.QLineEdit()
@@ -747,7 +783,7 @@ class MainWindow(QtWidgets.QMainWindow):
         db_row.addWidget(browse_db_btn)
         db_container = QtWidgets.QWidget()
         db_container.setLayout(db_row)
-        general_form.addRow("Папка БД:", db_container)
+        storage_form.addRow("Папка БД:", db_container)
 
         screenshot_row = QtWidgets.QHBoxLayout()
         self.screenshot_dir_input = QtWidgets.QLineEdit()
@@ -757,12 +793,14 @@ class MainWindow(QtWidgets.QMainWindow):
         screenshot_row.addWidget(browse_screenshot_btn)
         screenshot_container = QtWidgets.QWidget()
         screenshot_container.setLayout(screenshot_row)
-        general_form.addRow("Папка для скриншотов:", screenshot_container)
+        storage_form.addRow("Папка для скриншотов:", screenshot_container)
 
         save_general_btn = QtWidgets.QPushButton("Сохранить общие настройки")
         save_general_btn.clicked.connect(self._save_general_settings)
-        general_form.addRow(save_general_btn)
-        layout.addWidget(general_group)
+
+        layout.addWidget(reconnect_group)
+        layout.addWidget(storage_group)
+        layout.addWidget(save_general_btn, alignment=QtCore.Qt.AlignLeft)
         layout.addStretch()
 
         self._load_general_settings()
