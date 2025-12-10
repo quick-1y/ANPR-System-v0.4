@@ -45,11 +45,6 @@ class SettingsManager:
                 "database_file": "anpr.db",
                 "screenshots_dir": "data/screenshots",
             },
-            "validation": {
-                "enabled": True,
-                "countries": ["RU", "KZ"],
-                "stop_words": ["TEST", "SAMPLE"],
-            },
             "tracking": {
                 "best_shots": 3,
                 "cooldown_seconds": 5,
@@ -78,7 +73,6 @@ class SettingsManager:
         tracking_defaults = data.get("tracking", {})
         reconnect_defaults = self._reconnect_defaults()
         storage_defaults = self._storage_defaults()
-        validation_defaults = self._validation_defaults()
         for channel in data.get("channels", []):
             if self._fill_channel_defaults(channel, tracking_defaults):
                 changed = True
@@ -87,9 +81,6 @@ class SettingsManager:
             changed = True
 
         if self._fill_storage_defaults(data, storage_defaults):
-            changed = True
-
-        if self._fill_validation_defaults(data, validation_defaults):
             changed = True
 
         if changed:
@@ -129,10 +120,6 @@ class SettingsManager:
             "database_file": "anpr.db",
             "screenshots_dir": "data/screenshots",
         }
-
-    @staticmethod
-    def _validation_defaults() -> Dict[str, Any]:
-        return {"enabled": True, "countries": ["RU", "KZ"], "stop_words": ["TEST", "SAMPLE"]}
 
     def _fill_channel_defaults(self, channel: Dict[str, Any], tracking_defaults: Dict[str, Any]) -> bool:
         defaults = self._channel_defaults(tracking_defaults)
@@ -183,20 +170,6 @@ class SettingsManager:
                 storage[key] = val
                 changed = True
         data["storage"] = storage
-        return changed
-
-    def _fill_validation_defaults(self, data: Dict[str, Any], defaults: Dict[str, Any]) -> bool:
-        if "validation" not in data:
-            data["validation"] = defaults
-            return True
-
-        changed = False
-        validation = data.get("validation", {})
-        for key, val in defaults.items():
-            if key not in validation:
-                validation[key] = val
-                changed = True
-        data["validation"] = validation
         return changed
 
     def _save(self, data: Dict[str, Any]) -> None:
@@ -258,15 +231,6 @@ class SettingsManager:
         storage = self.settings.get("storage", {})
         storage["screenshots_dir"] = path
         self.settings["storage"] = storage
-        self._save(self.settings)
-
-    def get_validation(self) -> Dict[str, Any]:
-        if self._fill_validation_defaults(self.settings, self._validation_defaults()):
-            self._save(self.settings)
-        return self.settings.get("validation", {})
-
-    def save_validation(self, validation_conf: Dict[str, Any]) -> None:
-        self.settings["validation"] = validation_conf
         self._save(self.settings)
 
     def get_screenshot_dir(self) -> str:
