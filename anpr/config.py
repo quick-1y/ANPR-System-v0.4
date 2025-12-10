@@ -28,3 +28,8 @@ class ModelConfig:
 
     DEVICE: torch.device = torch.device("cpu")
 
+    # Валидация номеров
+    VALIDATION_ENABLED: bool = True
+    VALIDATION_COUNTRIES = ("RU", "BY", "KZ")
+    VALIDATION_STOP_WORDS = ("TEST", "SAMPLE")
+
