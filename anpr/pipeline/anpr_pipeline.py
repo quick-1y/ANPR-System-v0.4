@@ -12,6 +12,7 @@ import numpy as np
 
 from anpr.config import ModelConfig
 from anpr.recognition.crnn_recognizer import CRNNRecognizer
+from anpr.validation import PlatePostProcessor, validation_config_dir
 
 
 class TrackAggregator:
@@ -50,12 +51,19 @@ class ANPRPipeline:
         best_shots: int,
         cooldown_seconds: int = 0,
         min_confidence: float = ModelConfig.OCR_CONFIDENCE_THRESHOLD,
+        postprocessor: PlatePostProcessor | None = None,
     ) -> None:
         self.recognizer = recognizer
         self.aggregator = TrackAggregator(best_shots)
         self.cooldown_seconds = max(0, cooldown_seconds)
         self.min_confidence = max(0.0, min(1.0, min_confidence))
         self._last_seen: Dict[str, float] = {}
+        self.postprocessor = postprocessor or PlatePostProcessor(
+            ModelConfig.VALIDATION_ENABLED,
+            validation_config_dir(),
+            ModelConfig.VALIDATION_COUNTRIES,
+            ModelConfig.VALIDATION_STOP_WORDS,
+        )
 
     def _on_cooldown(self, plate: str) -> bool:
         last_seen = self._last_seen.get(plate)
@@ -125,12 +133,32 @@ class ANPRPipeline:
                         detection["confidence"] = confidence
                         continue
 
+                    detection["raw_text"] = current_text
+                    vote_ready = (
+                        self.postprocessor.normalize_for_vote(current_text)
+                        if self.postprocessor
+                        else current_text
+                    )
+
                     if "track_id" in detection:
-                        detection["text"] = self.aggregator.add_result(detection["track_id"], current_text)
+                        detection["text"] = self.aggregator.add_result(
+                            detection["track_id"], vote_ready
+                        )
                     else:
-                        detection["text"] = current_text
+                        detection["text"] = vote_ready
 
                     detection["confidence"] = confidence
+
+                    if detection.get("text"):
+                        validation = self.postprocessor.validate(detection["text"]) if self.postprocessor else None
+                        if validation:
+                            detection.update(validation.to_dict())
+                            if validation.accepted:
+                                detection["text"] = validation.plate
+                            else:
+                                detection["text"] = ""
+                        else:
+                            detection["plate"] = detection.get("text")
 
                     if self.cooldown_seconds > 0 and detection.get("text"):
                         if self._on_cooldown(detection["text"]):

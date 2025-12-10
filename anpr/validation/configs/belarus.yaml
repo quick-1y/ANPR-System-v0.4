@@ -1,0 +1,39 @@
+name: "Республика Беларусь"
+code: "BY"
+priority: 2
+uses_cyrillic: true
+min_length: 6
+max_length: 9
+stop_words: ["TEST", "SAMPLE"]
+
+license_plate_formats:
+  - name: "standard_car"
+    regex: "^[АВЕКМНОРСТУХ]\d{4}\-[1-7]$"
+    description: "Стандартный номер"
+  - name: "diplomatic"
+    regex: "^\d{3}CD\d{3}$"
+    description: "Дипломатический"
+
+valid_characters:
+  letters: "АВЕКМНОРСТУХ"
+  digits: "0123456789"
+
+corrections:
+  common_mistakes:
+    - {from: "0", to: "О"}
+    - {from: "1", to: "I"}
+    - {from: "8", to: "В"}
+  latin_to_cyrillic:
+    - {from: "A", to: "А"}
+    - {from: "B", to: "В"}
+    - {from: "C", to: "С"}
+    - {from: "E", to: "Е"}
+    - {from: "H", to: "Н"}
+    - {from: "K", to: "К"}
+    - {from: "M", to: "М"}
+    - {from: "O", to: "О"}
+    - {from: "P", to: "Р"}
+    - {from: "T", to: "Т"}
+    - {from: "X", to: "Х"}
+    - {from: "Y", to: "У"}
+  cyrillic_to_latin: []

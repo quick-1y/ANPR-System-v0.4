@@ -38,6 +38,11 @@
     "database_file": "anpr.db",
     "screenshots_dir": "data/screenshots"
   },
+  "validation": {
+    "enabled": true,
+    "countries": ["RU", "BY", "KZ"],
+    "stop_words": ["TEST", "SAMPLE"]
+  },
   "tracking": {
     "best_shots": 10,
     "cooldown_seconds": 10,
