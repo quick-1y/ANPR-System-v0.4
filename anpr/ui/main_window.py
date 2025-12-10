@@ -652,6 +652,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.event_images: Dict[int, Tuple[Optional[QtGui.QImage], Optional[QtGui.QImage]]] = {}
         self.event_cache: Dict[int, Dict] = {}
 
+        # ИНИЦИАЛИЗИРУЕМ СТАТУС БАР ПРЕЖДЕ ЧЕМ ВСЁ ОСТАЛЬНОЕ!
+        self._init_status_bar()
+        
         self._setup_ui()
         self._start_system_monitoring()
         self._refresh_events_table()
@@ -687,6 +690,33 @@ class MainWindow(QtWidgets.QMainWindow):
         frame_geometry.moveCenter(screen_center)
         self.move(frame_geometry.topLeft())
 
+    def _init_status_bar(self) -> None:
+        """Инициализирует статус бар ПЕРЕД созданием UI элементов."""
+        status = self.statusBar()
+        status.setStyleSheet("""
+            QStatusBar {
+                background-color: #252525;
+                color: white;
+                border-top: 1px solid #333;
+                padding: 6px;
+            }
+        """)
+        status.setSizeGripEnabled(False)
+        
+        # Виджеты статуса - СОЗДАЁМ ИХ СРАЗУ
+        self.status_label = QtWidgets.QLabel("Инициализация...")
+        status.addWidget(self.status_label)
+        
+        # Статистика системы
+        status.addPermanentWidget(QtWidgets.QLabel("|"))
+        self.cpu_label = QtWidgets.QLabel("⚙️ CPU: —%")
+        self.ram_label = QtWidgets.QLabel("💾 RAM: —%")
+        self.fps_label = QtWidgets.QLabel("🎬 FPS: —")
+        
+        status.addPermanentWidget(self.cpu_label)
+        status.addPermanentWidget(self.ram_label)
+        status.addPermanentWidget(self.fps_label)
+
     def _setup_ui(self) -> None:
         """Настраивает основной интерфейс."""
         self.setStyleSheet(self.APP_STYLE)
@@ -705,34 +735,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.settings_tab, "⚙️ Настройки")
         
         self.setCentralWidget(self.tabs)
-        self._build_status_bar()
-
-    def _build_status_bar(self) -> None:
-        """Создает строку состояния."""
-        status = self.statusBar()
-        status.setStyleSheet("""
-            QStatusBar {
-                background-color: #252525;
-                color: white;
-                border-top: 1px solid #333;
-                padding: 6px;
-            }
-        """)
-        status.setSizeGripEnabled(False)
         
-        # Виджеты статуса
-        self.status_label = QtWidgets.QLabel("Готово")
-        status.addWidget(self.status_label)
-        
-        # Статистика системы
-        status.addPermanentWidget(QtWidgets.QLabel("|"))
-        self.cpu_label = QtWidgets.QLabel("⚙️ CPU: —%")
-        self.ram_label = QtWidgets.QLabel("💾 RAM: —%")
-        self.fps_label = QtWidgets.QLabel("🎬 FPS: —")
-        
-        status.addPermanentWidget(self.cpu_label)
-        status.addPermanentWidget(self.ram_label)
-        status.addPermanentWidget(self.fps_label)
+        # Обновляем статус
+        self.status_label.setText("Готово")
 
     def _start_system_monitoring(self) -> None:
         """Запускает мониторинг системы."""
@@ -1548,6 +1553,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.channels_list.addItem(channel.get("name", "Канал"))
         if self.channels_list.count():
             self.channels_list.setCurrentRow(0)
+            # Загружаем форму первого канала
+            self._load_channel_form(0)
 
     def _load_general_settings(self) -> None:
         """Загружает общие настройки."""
@@ -1833,7 +1840,8 @@ class MainWindow(QtWidgets.QMainWindow):
         source = str(channels[index].get("source", "")).strip()
         if not source:
             self.preview.setPixmap(None)
-            self.status_label.setText("Источник не указан")
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("Источник не указан")
             return
             
         try:
@@ -1848,7 +1856,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 
             if not capture.isOpened():
                 self.preview.setPixmap(None)
-                self.status_label.setText(f"Не удалось открыть: {source}")
+                if hasattr(self, 'status_label'):
+                    self.status_label.setText(f"Не удалось открыть: {source}")
                 return
                 
             # Читаем кадр
@@ -1857,7 +1866,8 @@ class MainWindow(QtWidgets.QMainWindow):
             
             if not ret or frame is None:
                 self.preview.setPixmap(None)
-                self.status_label.setText(f"Не удалось получить кадр: {source}")
+                if hasattr(self, 'status_label'):
+                    self.status_label.setText(f"Не удалось получить кадр: {source}")
                 return
                 
             # Конвертируем в QImage
@@ -1871,12 +1881,14 @@ class MainWindow(QtWidgets.QMainWindow):
             ).copy()
             
             self.preview.setPixmap(QtGui.QPixmap.fromImage(q_image))
-            self.status_label.setText(f"Кадр загружен: {source}")
+            if hasattr(self, 'status_label'):
+                self.status_label.setText(f"Кадр загружен: {source}")
             
         except Exception as e:
             logger.error(f"Ошибка загрузки предпросмотра: {e}")
             self.preview.setPixmap(None)
-            self.status_label.setText(f"Ошибка: {str(e)}")
+            if hasattr(self, 'status_label'):
+                self.status_label.setText(f"Ошибка: {str(e)}")
 
     # ------------------ Жизненный цикл ------------------
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
