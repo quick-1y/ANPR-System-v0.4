@@ -592,8 +592,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _refresh_events_table(self, select_id: Optional[int] = None) -> None:
         rows = self.db.fetch_recent(limit=200)
         self.events_table.setRowCount(0)
-        self.event_cache = {row["id"]: dict(row) for row in rows}
-        for row_data in rows:
+        row_dicts = [dict(row) for row in rows]
+        self.event_cache = {row_dict["id"]: row_dict for row_dict in row_dicts}
+        for row_data in row_dicts:
             row_index = self.events_table.rowCount()
             self.events_table.insertRow(row_index)
             id_item = QtWidgets.QTableWidgetItem(row_data["timestamp"])
