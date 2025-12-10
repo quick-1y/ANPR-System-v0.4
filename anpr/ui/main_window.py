@@ -546,8 +546,43 @@ class MainWindow(QtWidgets.QMainWindow):
         channel_label = self.channel_labels.get(event.get("channel", ""))
         if channel_label:
             channel_label.set_last_plate(event.get("plate", ""))
-        self._refresh_events_table(select_id=event_id)
+        if event_id:
+            self._insert_event_row(event, position=0)
+            self._trim_events_table()
+        else:
+            self._refresh_events_table()
         self._show_event_details(event_id)
+
+    def _cleanup_event_images(self, valid_ids: set[int]) -> None:
+        for stale_id in list(self.event_images.keys()):
+            if stale_id not in valid_ids:
+                self.event_images.pop(stale_id, None)
+
+    def _insert_event_row(self, event: Dict, position: Optional[int] = None) -> None:
+        row_index = position if position is not None else self.events_table.rowCount()
+        self.events_table.insertRow(row_index)
+
+        timestamp = event.get("timestamp", "—")
+        plate = event.get("plate", "—")
+        channel = event.get("channel", "—")
+        event_id = int(event.get("id") or 0)
+
+        id_item = QtWidgets.QTableWidgetItem(timestamp)
+        id_item.setData(QtCore.Qt.UserRole, event_id)
+        self.events_table.setItem(row_index, 0, id_item)
+        self.events_table.setItem(row_index, 1, QtWidgets.QTableWidgetItem(plate))
+        self.events_table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(channel))
+
+    def _trim_events_table(self, max_rows: int = 200) -> None:
+        while self.events_table.rowCount() > max_rows:
+            last_row = self.events_table.rowCount() - 1
+            item = self.events_table.item(last_row, 0)
+            event_id = int(item.data(QtCore.Qt.UserRole) or 0) if item else 0
+            self.events_table.removeRow(last_row)
+            if event_id and event_id in self.event_cache:
+                self.event_cache.pop(event_id, None)
+            if event_id and event_id in self.event_images:
+                self.event_images.pop(event_id, None)
 
     def _handle_status(self, channel: str, status: str) -> None:
         label = self.channel_labels.get(channel)
@@ -583,14 +618,12 @@ class MainWindow(QtWidgets.QMainWindow):
         rows = self.db.fetch_recent(limit=200)
         self.events_table.setRowCount(0)
         self.event_cache = {row["id"]: dict(row) for row in rows}
+        valid_ids = set(self.event_cache.keys())
+
         for row_data in rows:
-            row_index = self.events_table.rowCount()
-            self.events_table.insertRow(row_index)
-            id_item = QtWidgets.QTableWidgetItem(row_data["timestamp"])
-            id_item.setData(QtCore.Qt.UserRole, int(row_data["id"]))
-            self.events_table.setItem(row_index, 0, id_item)
-            self.events_table.setItem(row_index, 1, QtWidgets.QTableWidgetItem(row_data["plate"]))
-            self.events_table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(row_data["channel"]))
+            self._insert_event_row(dict(row_data))
+
+        self._cleanup_event_images(valid_ids)
 
         if select_id:
             for row in range(self.events_table.rowCount()):
