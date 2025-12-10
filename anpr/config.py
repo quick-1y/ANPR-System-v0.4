@@ -15,7 +15,7 @@ class ModelConfig:
     """Пути к моделям и базовые параметры распознавания."""
 
     YOLO_MODEL_PATH: str = "models/yolo/best.pt"
-    OCR_MODEL_PATH: str = "models/ocr_crnn/cnn.pth"
+    OCR_MODEL_PATH: str = "models/ocr_crnn/crnn_ocr_model_int8_fx.pth"
 
     OCR_IMG_HEIGHT: int = 32
     OCR_IMG_WIDTH: int = 128
