@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Dict, List, Tuple
 
 import torch
@@ -22,12 +21,6 @@ class CRNNRecognizer:
     """Подготовка, загрузка и инференс CRNN."""
 
     def __init__(self, model_path: str, device: torch.device) -> None:
-        try:
-            self._loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-
         self.device = device
         self.transform = transforms.Compose(
             [
