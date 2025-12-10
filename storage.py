@@ -30,10 +30,17 @@ class EventDatabase:
             cursor = conn.execute("PRAGMA table_info(events)")
             return any(row[1] == name for row in cursor.fetchall())
 
-        if not _column_exists("frame_path"):
-            conn.execute("ALTER TABLE events ADD COLUMN frame_path TEXT")
-        if not _column_exists("plate_path"):
-            conn.execute("ALTER TABLE events ADD COLUMN plate_path TEXT")
+        for column, ddl in (
+            ("frame_path", "ALTER TABLE events ADD COLUMN frame_path TEXT"),
+            ("plate_path", "ALTER TABLE events ADD COLUMN plate_path TEXT"),
+            ("raw_text", "ALTER TABLE events ADD COLUMN raw_text TEXT"),
+            ("country_code", "ALTER TABLE events ADD COLUMN country_code TEXT"),
+            ("country_name", "ALTER TABLE events ADD COLUMN country_name TEXT"),
+            ("plate_format", "ALTER TABLE events ADD COLUMN plate_format TEXT"),
+            ("validation_reason", "ALTER TABLE events ADD COLUMN validation_reason TEXT"),
+        ):
+            if not _column_exists(column):
+                conn.execute(ddl)
 
     def _init_db(self) -> None:
         with self._connect() as conn:
@@ -47,7 +54,12 @@ class EventDatabase:
                     confidence REAL,
                     source TEXT,
                     frame_path TEXT,
-                    plate_path TEXT
+                    plate_path TEXT,
+                    raw_text TEXT,
+                    country_code TEXT,
+                    country_name TEXT,
+                    plate_format TEXT,
+                    validation_reason TEXT
                 )
                 """
             )
@@ -63,15 +75,33 @@ class EventDatabase:
         timestamp: Optional[str] = None,
         frame_path: Optional[str] = None,
         plate_path: Optional[str] = None,
+        raw_text: Optional[str] = None,
+        country_code: Optional[str] = None,
+        country_name: Optional[str] = None,
+        plate_format: Optional[str] = None,
+        validation_reason: Optional[str] = None,
     ) -> int:
         ts = timestamp or datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             cursor = conn.execute(
                 (
-                    "INSERT INTO events (timestamp, channel, plate, confidence, source, frame_path, plate_path)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO events (timestamp, channel, plate, confidence, source, frame_path, plate_path, raw_text, country_code, country_name, plate_format, validation_reason)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 ),
-                (ts, channel, plate, confidence, source, frame_path, plate_path),
+                (
+                    ts,
+                    channel,
+                    plate,
+                    confidence,
+                    source,
+                    frame_path,
+                    plate_path,
+                    raw_text,
+                    country_code,
+                    country_name,
+                    plate_format,
+                    validation_reason,
+                ),
             )
             conn.commit()
             self.logger.info(
@@ -175,7 +205,12 @@ class AsyncEventDatabase:
                     confidence REAL,
                     source TEXT,
                     frame_path TEXT,
-                    plate_path TEXT
+                    plate_path TEXT,
+                    raw_text TEXT,
+                    country_code TEXT,
+                    country_name TEXT,
+                    plate_format TEXT,
+                    validation_reason TEXT
                 )
                 """
             )
@@ -189,10 +224,17 @@ class AsyncEventDatabase:
             rows = await cursor.fetchall()
             return any(row[1] == name for row in rows)
 
-        if not await _column_exists("frame_path"):
-            await conn.execute("ALTER TABLE events ADD COLUMN frame_path TEXT")
-        if not await _column_exists("plate_path"):
-            await conn.execute("ALTER TABLE events ADD COLUMN plate_path TEXT")
+        for column, ddl in (
+            ("frame_path", "ALTER TABLE events ADD COLUMN frame_path TEXT"),
+            ("plate_path", "ALTER TABLE events ADD COLUMN plate_path TEXT"),
+            ("raw_text", "ALTER TABLE events ADD COLUMN raw_text TEXT"),
+            ("country_code", "ALTER TABLE events ADD COLUMN country_code TEXT"),
+            ("country_name", "ALTER TABLE events ADD COLUMN country_name TEXT"),
+            ("plate_format", "ALTER TABLE events ADD COLUMN plate_format TEXT"),
+            ("validation_reason", "ALTER TABLE events ADD COLUMN validation_reason TEXT"),
+        ):
+            if not await _column_exists(column):
+                await conn.execute(ddl)
 
     async def insert_event_async(
         self,
@@ -203,16 +245,34 @@ class AsyncEventDatabase:
         timestamp: Optional[str] = None,
         frame_path: Optional[str] = None,
         plate_path: Optional[str] = None,
+        raw_text: Optional[str] = None,
+        country_code: Optional[str] = None,
+        country_name: Optional[str] = None,
+        plate_format: Optional[str] = None,
+        validation_reason: Optional[str] = None,
     ) -> int:
         await self._ensure_schema()
         ts = timestamp or datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self.db_path) as conn:
             cursor = await conn.execute(
                 (
-                    "INSERT INTO events (timestamp, channel, plate, confidence, source, frame_path, plate_path)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO events (timestamp, channel, plate, confidence, source, frame_path, plate_path, raw_text, country_code, country_name, plate_format, validation_reason)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 ),
-                (ts, channel, plate, confidence, source, frame_path, plate_path),
+                (
+                    ts,
+                    channel,
+                    plate,
+                    confidence,
+                    source,
+                    frame_path,
+                    plate_path,
+                    raw_text,
+                    country_code,
+                    country_name,
+                    plate_format,
+                    validation_reason,
+                ),
             )
             await conn.commit()
             self.logger.info(

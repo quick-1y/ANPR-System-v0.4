@@ -12,6 +12,7 @@ import numpy as np
 
 from anpr.config import ModelConfig
 from anpr.recognition.crnn_recognizer import CRNNRecognizer
+from anpr.validation import PlateValidationResult, PlateValidator
 
 
 class TrackAggregator:
@@ -50,9 +51,11 @@ class ANPRPipeline:
         best_shots: int,
         cooldown_seconds: int = 0,
         min_confidence: float = ModelConfig.OCR_CONFIDENCE_THRESHOLD,
+        validator: PlateValidator | None = None,
     ) -> None:
         self.recognizer = recognizer
         self.aggregator = TrackAggregator(best_shots)
+        self.validator = validator or PlateValidator()
         self.cooldown_seconds = max(0, cooldown_seconds)
         self.min_confidence = max(0.0, min(1.0, min_confidence))
         self._last_seen: Dict[str, float] = {}
@@ -108,6 +111,22 @@ class ANPRPipeline:
                 return self._four_point_transform(plate_image, approx.reshape(4, 2))
         return plate_image
 
+    def _apply_validation(self, detection: Dict[str, Any], candidate: str) -> None:
+        detection["raw_text"] = candidate
+        result: PlateValidationResult = self.validator.validate(candidate)
+        if result.is_valid:
+            detection["text"] = result.text
+            detection["country_code"] = result.country_code
+            detection["country_name"] = result.country_name
+            detection["plate_format"] = result.plate_format
+            detection["invalid"] = False
+        else:
+            detection["text"] = ""
+            detection["invalid"] = True
+            detection["validation_reason"] = result.reason
+            if "track_id" in detection:
+                self.aggregator.last_emitted.pop(detection["track_id"], None)
+
     def process_frame(self, frame: np.ndarray, detections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for detection in detections:
             x1, y1, x2, y2 = detection["bbox"]
@@ -119,18 +138,20 @@ class ANPRPipeline:
                 if processed_plate.size > 0:
                     current_text, confidence = self.recognizer.recognize(processed_plate)
 
+                    detection["confidence"] = confidence
+
                     if confidence < self.min_confidence:
                         detection["text"] = "Нечитаемо"
                         detection["unreadable"] = True
-                        detection["confidence"] = confidence
                         continue
 
-                    if "track_id" in detection:
-                        detection["text"] = self.aggregator.add_result(detection["track_id"], current_text)
-                    else:
-                        detection["text"] = current_text
-
-                    detection["confidence"] = confidence
+                    aggregated = (
+                        self.aggregator.add_result(detection["track_id"], current_text)
+                        if "track_id" in detection
+                        else current_text
+                    )
+                    if aggregated:
+                        self._apply_validation(detection, aggregated)
 
                     if self.cooldown_seconds > 0 and detection.get("text"):
                         if self._on_cooldown(detection["text"]):

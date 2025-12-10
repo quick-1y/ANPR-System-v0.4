@@ -1,0 +1,25 @@
+name: "Казахстан"
+code: "KZ"
+priority: 2
+use_cyrillic_normalization: false
+license_plate_formats:
+  - name: "standard_car"
+    regex: "^\d{3}[A-Z]{3}\d{2}$"
+    description: "Стандартный автомобильный номер"
+  - name: "regional_car"
+    regex: "^[A-Z]{2}\d{4}[A-Z]\d{2}$"
+    description: "Региональный номер"
+valid_characters:
+  letters: "ABCEHKMOPTXYҚҒҰҮІӘӨ"
+  digits: "0123456789"
+corrections:
+  common_mistakes:
+    - from: "0"
+      to: "O"
+    - from: "1"
+      to: "I"
+    - from: "5"
+      to: "S"
+    - from: "8"
+      to: "B"
+  latin_to_cyrillic: []
