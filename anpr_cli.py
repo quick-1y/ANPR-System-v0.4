@@ -55,12 +55,7 @@ def _process_image(pipeline: ANPRPipeline, detector: YOLODetector, source_path: 
     if not results:
         print("- Номера не найдены.")
     for res in results:
-        country = res.get("country") or res.get("country_name") or "—"
-        fmt = res.get("format") or "—"
-        print(
-            f"- {res.get('text', '')} (страна: {country}, формат: {fmt}, "
-            f"уверенность OCR: {res.get('confidence', 0.0):.2f})"
-        )
+        print(f"- {res.get('text', '')} (уверенность детектора: {res.get('confidence', 0.0):.2f})")
 
     frame = Visualizer.draw_results(frame, results)
     cv2.imshow("ANPR Result", frame)

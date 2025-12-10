@@ -45,11 +45,6 @@ class SettingsManager:
                 "database_file": "anpr.db",
                 "screenshots_dir": "data/screenshots",
             },
-            "validation": {
-                "enabled": True,
-                "countries": ["RU", "BY", "KZ"],
-                "stop_words": ["TEST", "SAMPLE"],
-            },
             "tracking": {
                 "best_shots": 3,
                 "cooldown_seconds": 5,
@@ -78,7 +73,6 @@ class SettingsManager:
         tracking_defaults = data.get("tracking", {})
         reconnect_defaults = self._reconnect_defaults()
         storage_defaults = self._storage_defaults()
-        validation_defaults = self._validation_defaults()
         for channel in data.get("channels", []):
             if self._fill_channel_defaults(channel, tracking_defaults):
                 changed = True
@@ -89,10 +83,6 @@ class SettingsManager:
         if self._fill_storage_defaults(data, storage_defaults):
             changed = True
 
-        if "validation" not in data:
-            data["validation"] = validation_defaults
-            changed = True
-
         if changed:
             self._save(data)
         return data
@@ -100,14 +90,14 @@ class SettingsManager:
     @staticmethod
     def _channel_defaults(tracking_defaults: Dict[str, Any]) -> Dict[str, Any]:
         return {
-            "best_shots": int(tracking_defaults.get("best_shots", 10)),
-            "cooldown_seconds": int(tracking_defaults.get("cooldown_seconds", 10)),
-            "ocr_min_confidence": float(tracking_defaults.get("ocr_min_confidence", 0.9)),
+            "best_shots": int(tracking_defaults.get("best_shots", 3)),
+            "cooldown_seconds": int(tracking_defaults.get("cooldown_seconds", 5)),
+            "ocr_min_confidence": float(tracking_defaults.get("ocr_min_confidence", 0.6)),
             "region": {"x": 0, "y": 0, "width": 100, "height": 100},
-            "detection_mode": "motion",
-            "detector_frame_stride": 5,
+            "detection_mode": "continuous",
+            "detector_frame_stride": 2,
             "motion_threshold": 0.01,
-            "motion_frame_stride": 2,
+            "motion_frame_stride": 1,
             "motion_activation_frames": 3,
             "motion_release_frames": 6,
         }
@@ -129,14 +119,6 @@ class SettingsManager:
             "db_dir": "data/db",
             "database_file": "anpr.db",
             "screenshots_dir": "data/screenshots",
-        }
-
-    @staticmethod
-    def _validation_defaults() -> Dict[str, Any]:
-        return {
-            "enabled": True,
-            "countries": ["RU", "BY", "KZ"],
-            "stop_words": ["TEST", "SAMPLE"],
         }
 
     def _fill_channel_defaults(self, channel: Dict[str, Any], tracking_defaults: Dict[str, Any]) -> bool:
@@ -208,15 +190,6 @@ class SettingsManager:
 
     def save_channels(self, channels: List[Dict[str, Any]]) -> None:
         self.settings["channels"] = channels
-        self._save(self.settings)
-
-    def get_validation(self) -> Dict[str, Any]:
-        if "validation" not in self.settings:
-            self.settings["validation"] = self._validation_defaults()
-        return self.settings.get("validation", {})
-
-    def save_validation(self, validation: Dict[str, Any]) -> None:
-        self.settings["validation"] = validation
         self._save(self.settings)
 
     def get_grid(self) -> str:
